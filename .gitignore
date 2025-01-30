@@ -1,4 +1,4 @@
 env
 .venv
 .env
-chroma_db
+my_app.log

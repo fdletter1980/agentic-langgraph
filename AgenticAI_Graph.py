@@ -107,41 +107,23 @@ from langgraph.graph import END, StateGraph, START, MessagesState
 
 
 import os
-os.environ["GOOGLE_API_KEY"] ='YOUR GOOGLE API KEY'
+from dotenv import load_dotenv
 
+load_dotenv()  # Load environment variables from .env file
 
-# In[ ]:
-#code to provision integration with our LLM Ops platform Arize
-#import arize_otel
+api_key = os.getenv("GOOGLE_API_KEY")
 
-# Import open-telemetry dependencies
-#from arize_otel import register_otel, Endpoints
-
-# Setup OTEL via our convenience function
-#register_otel(
-#    endpoints = Endpoints.ARIZE,
-#    space_id = "", # in app space settings page
-#    api_key = "", # in app space settings page
-#    model_id = "churn_project", # name this to whatever you would like
-#    #log_to_console = True
-#)
-# Import the automatic instrumentor from OpenInference
-#from openinference.instrumentation.langchain import LangChainInstrumentor
-
-# Finish automatic instrumentation
-#LangChainInstrumentor().instrument()
 
 # In[ ]:
 
 #from langchain.document_loaders import DirectoryLoader
 
-loader = DirectoryLoader("./downloads/", glob="**/*.pdf")
+loader = DirectoryLoader("./knowledge_base/", glob="**/*.pdf")
 documents = loader.load()
 #print(documents[0])
 
 # In[ ]:
-
-
+# If you want to run it from a GCP bucket
 #def download_blob(bucket_name, source_blob_name, destination_file_name):
 #    """Downloads a blob from the bucket."""
 
@@ -156,9 +138,9 @@ documents = loader.load()
  #   )
 
 # Example usage
-#bucket_name = "kw-data-science-scratch"
-#source_blob_name = "fred/KB/coaching_cap.pdf"
-#destination_file_name = "./coaching_cap.pdf"
+#bucket_name = ""
+#source_blob_name = ""
+#destination_file_name = ""
 
 
 #download_blob(bucket_name, source_blob_name, destination_file_name)
@@ -217,174 +199,23 @@ def format_docs(docs):
 # In[ ]:
 
 
-client = bigquery.Client()
+#client = bigquery.Client()
 
 
 # In[ ]:
 
 
-QUERY1 = (
-'''
-SELECT kw_uid as kw_uid, 
-heatseeker,
-CASE 
-  when heatseeker > 0.1374 THEN 1
-  else 0
-END AS FLAGGED_CHURN_REALTORS,
-cap as CAP_SEGMENT,
-units_last_12 as SOLD_UNITS
-FROM `data-lake-prod-pres-2c917b19.people.agent_retention__internal_agent_targets_tbl` LIMIT 1000 
-'''
-)
+#QUERY1 = (
+#'''
+#SELECT * FROM
+#'''
+#)
 
-@st.cache_data
-def fetch_churn_data():
-    data = client.query_and_wait(QUERY1).to_dataframe()
-    return data
-
-df_c = client.query_and_wait(QUERY1).to_dataframe()
-
-
-# In[ ]:
-
-
-df_c[df_c.duplicated(['kw_uid'], keep=False)]
-
-
-# In[ ]:
-
-
-df_c = df_c.drop_duplicates(subset='kw_uid', keep="first")
-
-
-# In[ ]:
-
-
-df_c['kw_uid'] = pd.to_numeric(df_c['kw_uid'], errors='coerce')
-
-# In[ ]:
-
-
-QUERY2 = (
-'SELECT distinct kw_uid, first_name, last_name, luxury, commercial, land, military ,maps_client, maps_mastery_client,  FROM `data-lake-prod-pres-2c917b19.people.ams__person_details_tbl` where active = 1 and country_id = 235 and person_type = 1'
-)
-
-@st.cache_data
-def fetch_agent_ams_data():
-    data = client.query_and_wait(QUERY2).to_dataframe()
-    return data
-
-df_a = client.query_and_wait(QUERY2).to_dataframe()
-
-
-# In[ ]:
-
-
-QUERY3 = (
-'''
-SELECT distinct kw_uid,
-max(case when source = "Designs" THEN count end) as Designs,
-max(case when source = "SmartPlans" THEN count end) as SmartPlans,
-max(case when source = "Tasks" THEN count end) as Tasks,
-max(case when source = "Interactions" THEN count end) as Interactions,
-max(case when source = "Referrals" THEN count end) as Referrals,
-max(case when source = "Campaigns" THEN count end) as Campaigns,
-max(case when source = "Opportunities" THEN count end) as Opportunities,
-max(case when source = "Contacts" THEN count end) as Contacts
-FROM `data-lake-prod-pres-2c917b19.bi_rd.command_activity_fixed`
-WHERE type != 'deleted' and date >= '2024-01-01'
-group by kw_uid
-;
-'''
-)
-
-@st.cache_data
-def fetch_command_data():
-    data = client.query_and_wait(QUERY3).to_dataframe()
-    return data
-
-df_u = client.query_and_wait(QUERY3).to_dataframe()
-
-
-# In[ ]:
-
-
-# Replace null values with 0
-df_u.fillna(0, inplace=True)
-
-
-# In[ ]:
-
-
-df_u[df_u.duplicated(['kw_uid'], keep=False)]
-
-
-# In[ ]:
-
-
-df_u['kw_uid'] = pd.to_numeric(df_u['kw_uid'], errors='coerce')
-
-
-# In[ ]:
-
-
-QUERY4 = (
-'''
-WITH contacts_data_set AS (
-  SELECT c.*
-  FROM (SELECT cs.*, owner.id as owner_id, author.created_by as created_by
-            , CASE WHEN p.type = 'CLAIMED' THEN p.granted_to END as claimed_by
-            , p.granted_to
-      FROM `data-lake-prod-pres-2c917b19.contacts.contacts_snapshot` cs LEFT JOIN UNNEST(permissions) p) c
-  WHERE c.archived_date IS NULL AND c.deleted_at IS NULL -- active (not deleted or archived) contacts only
-)
-
-, primary_assignee AS (
-  SELECT c._id
-        , CASE WHEN owner.type = 'AGENT' THEN owner.id
-              WHEN claimed_by IS NOT NULL THEN claimed_by
-              WHEN in_lead_route = true THEN NULL
-              WHEN granted_count = 1 THEN granted_to
-              ELSE created_by END as kw_uid -- primary assignee
-  FROM contacts_data_set c
-        JOIN (SELECT _id, COALESCE(COUNT(DISTINCT granted_to),0) as granted_count FROM contacts_data_set GROUP BY 1) a ON c._id = a._id
-)
-
-, contacts_per_kwuid AS (
-  SELECT kw_uid, COUNT(DISTINCT _id) as active_contact_count
-  FROM primary_assignee
-  GROUP BY ALL
-)
-
-SELECT *
-FROM contacts_per_kwuid
-'''
-)
-
-@st.cache_data
-def fetch_contacts_data():
-    data = client.query_and_wait(QUERY4).to_dataframe()
-    return data
-
-df_co = client.query_and_wait(QUERY4).to_dataframe()
-
-
-# In[ ]:
-
-
-df_co['kw_uid'] = pd.to_numeric(df_co['kw_uid'], errors='coerce')
-
-
-# In[ ]:
-
-
-merged_df = df_c.merge(df_a, on='kw_uid').merge(df_u, on='kw_uid').merge(df_co, on='kw_uid')
-
-
-# In[ ]:
-
-
-merged_df.fillna(0, inplace=True)
+#@st.cache_data
+#def fetch_churn_data():
+#    data = client.query_and_wait(QUERY1).to_dataframe()
+#    return data
+df = pd.read_csv("./knowledge_base/LG_refrigerator_sales.csv")
 
 
 # # Inject DataFrame into DB
@@ -392,26 +223,20 @@ merged_df.fillna(0, inplace=True)
 # In[ ]:
 
 
-connection = sqlite3.connect("realtors.db")
-connection.execute("DROP TABLE realtors")
+connection = sqlite3.connect("sales.db")
+connection.execute("DROP TABLE sales")
 
 
 # In[ ]:
 
 
-merged_df_str = merged_df.applymap(str)
+df.to_sql(name="sales", con=connection)
 
 
 # In[ ]:
 
 
-merged_df_str.to_sql(name="realtors", con=connection)
-
-
-# In[ ]:
-
-
-db = SQLDatabase.from_uri("sqlite:///realtors.db")
+db = SQLDatabase.from_uri("sqlite:///sales.db")
 
 
 # In[ ]:
@@ -458,7 +283,7 @@ sql_agent_executor = create_react_agent(llm,tools=toolkit.get_tools(),state_modi
 
 
 #Test a qeury with the SQL agent
-query="How many realtors are present in the database and what is the average number of contacts?"
+query="How many sales are there in the databases?"
 
 events = sql_agent_executor.stream(
      {"messages": [HumanMessage(content=query)]},
@@ -733,16 +558,10 @@ writer_graph = builder_writer.compile()
 prompt_message_super="""You are a supervisor tasked with managing a conversation between the following workers: {{members_super}}.
 Given the following user request, respond with the worker to act next. Each worker will perform a task and respond with their results and status. If the conversation is over, respond with 'FINISH'.
 
-Create a nicely formatted example email for the first realtor that is identified as going to churn based upon the
-        first kw_uid from the list. Make sure to adhere to the following:
-        1. Address the realtor with the content of the "First Name" field.
-        2. Indicate in which CAP segment the realtor is currently residing in.
-        3. Recommend a couple of coaching programs that realtors are taking in the next CAP segment up.
-          Suggest that if they are looking for something else suggest contacting their MAPS coach.
-        4. If the number of active_contact_count from the realtor is less than 201 please call this out in that this has been proven out to be correlated with higher production.
-        5. Evalaute if the realtor has any usage with SmartPlans and if 0 suggest the use of SmartPlans as a tool to engage with their contacts.
-        6. Make sure it is a positive and constructive message.
-        7. Sign off with The Keller Williams Team
+Create a nicely formatted overview of the LG refridgerator. Make sure to adhere to the following:
+        1. LG sales per country based upon the sales database
+        2. Most comment features of the refridgerator 
+The output should be summary text of the entire response compilation.
 
  """
 
