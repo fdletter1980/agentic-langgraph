@@ -17,6 +17,3 @@ Prerequisites:
   2. Get Google API key covering GenerativeAI services
   3. The app version has integration code commented out re our LLM Ops platform (Arize)
 
-Example using the super prompt embedded in the code triggering the graph:
-
-![image](https://github.com/user-attachments/assets/59da1883-4c7d-4c52-acae-514ce34bd81f)
