@@ -81,7 +81,7 @@ from langchain_google_vertexai import ChatVertexAI
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_community.document_loaders import WebBaseLoader, PyPDFLoader, PyPDFDirectoryLoader
 from langchain_experimental.text_splitter import SemanticChunker
-from langchain.document_loaders import DirectoryLoader
+from langchain_community.document_loaders import DirectoryLoader
 from langchain_google_community import GCSDirectoryLoader
 from langchain_community.vectorstores import Chroma
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
@@ -115,8 +115,6 @@ api_key = os.getenv("GOOGLE_API_KEY")
 
 
 # In[ ]:
-
-#from langchain.document_loaders import DirectoryLoader
 
 loader = DirectoryLoader("./knowledge_base/", glob="**/*.pdf")
 documents = loader.load()
@@ -243,7 +241,7 @@ db = SQLDatabase.from_uri("sqlite:///sales.db")
 
 
 #llm = ChatVertexAI(model="gemini-1.5-flash-002")
-llm = ChatGoogleGenerativeAI(model="gemini-1.5-flash-002", temperature=0.2)
+llm = ChatGoogleGenerativeAI(model="gemini-1.5-flash-002", temperature=0.1)
 
 
 # In[ ]:
@@ -332,12 +330,6 @@ rag_chain = (
     | llm
     | StrOutputParser()
 )
-
-
-# In[ ]:
-
-
-#rag_chain.invoke({"question" : "What are some of the most popular coaching programs in the Full Cap status?"})
 
 
 # In[ ]:
@@ -460,46 +452,6 @@ research_graph = research_builder.compile()
 #display(Image(research_graph.get_graph().draw_mermaid_png()))
 
 
-# # Research Results
-
-# In[ ]:
-
-
-#query = "What are the most popular full cap coaching programs?"
-
-#input_data = {"query": query}
-
-#for s in research_graph.stream(
-#    {
-#        "messages": [
-#            HumanMessage(content=input_data['query'])
-#        ]
-#    }
-#):
-#    if "__end__" not in s:
-#        print(s)
-#        print("----")
-
-
-# In[ ]:
-
-
-#query = "How many realtors are present in the database and what is the average count contacts?"
-
-#input_data = {"query": query}
-
-#for s in research_graph.stream(
-#    {
-#        "messages": [
-#            HumanMessage(content=input_data['query'])
-#        ]
-#    }
-#):
-#    if "__end__" not in s:
-#        print(s)
-#        print("----")
-
-
 # # Initialize the Writing Agents
 
 # In[ ]:
@@ -534,22 +486,6 @@ writer_graph = builder_writer.compile()
 
 # In[ ]:
 
-
-#query = "Describe what a realtor does?"
-
-#input_data = {"query": query}
-
-#for s in writer_graph.stream(
-#    {
-#        "messages": [
-#            HumanMessage(content=input_data['query'])
-#        ]
-#    }
-#):
-#    if "__end__" not in s:
-#        print(s)
-#        print("----")
-
 # # Add Layers
 
 # In[ ]:
@@ -557,13 +493,13 @@ writer_graph = builder_writer.compile()
 
 prompt_message_super="""You are a supervisor tasked with managing a conversation between the following workers: {{members_super}}.
 Given the following user request, respond with the worker to act next. Each worker will perform a task and respond with their results and status. If the conversation is over, respond with 'FINISH'.
+"""
+#Create a nicely formatted overview of the LG refridgerator. Make sure to adhere to the following:
+#        1. LG sales per country based upon the sales database
+#        2. Most comment features of the refridgerator 
+#The output should be summary text of the entire response compilation.
 
-Create a nicely formatted overview of the LG refridgerator. Make sure to adhere to the following:
-        1. LG sales per country based upon the sales database
-        2. Most comment features of the refridgerator 
-The output should be summary text of the entire response compilation.
 
- """
 
 
 # In[ ]:
@@ -619,24 +555,10 @@ super_graph = super_builder.compile()
 # In[ ]:
 
 
-from IPython.display import Image, display
+#from IPython.display import Image, display
 
-display(Image(super_graph.get_graph().draw_mermaid_png()))
+#display(Image(super_graph.get_graph().draw_mermaid_png()))
 
-
-# In[ ]:
-
-
-#for s in super_graph.stream(
-#    {
-#        "messages": [
-#            ("user", "select first realtor and write email.")
-#        ],
-#    },
-#    {"recursion_limit": 150},
-#):
-#    print(s)
-#    print("---")
 
 # In[ ]:
 
@@ -646,5 +568,5 @@ def invoke_our_graph(st_messages, callables):
     if not isinstance(callables, list):
         raise TypeError("callables must be a list")
     # Invoke the graph with the current messages and callback configuration
-    return super_graph.invoke({"messages": st_messages}, config={"callbacks": callables, "recursion_limit": 50})
+    return super_graph.invoke({"messages": st_messages}, config={"callbacks": callables, "recursion_limit": 100})
 
